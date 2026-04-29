@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from collections import Counter
+from io import BytesIO
 import re
 
 # ============================================
@@ -697,10 +698,13 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     colunas_existentes = [c for c in colunas_protocolo if c in df_protocolos.columns]
     if len(df_protocolos) > 0:
         st.dataframe(df_protocolos[colunas_existentes], use_container_width=True, height=400)
-        csv_protocolos = df_protocolos[colunas_existentes].to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Download dos protocolos filtrados (CSV)", data=csv_protocolos,
-                           file_name=f"protocolos_sla_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                           mime="text/csv")
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_protocolos[colunas_existentes].to_excel(writer, index=False, sheet_name='Protocolos')
+        excel_data = output.getvalue()
+        st.download_button(label="📥 Download dos protocolos filtrados (Excel)", data=excel_data,
+                           file_name=f"protocolos_sla_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     else:
         st.info("Nenhum protocolo encontrado com os filtros selecionados.")
     st.markdown("---")
@@ -733,10 +737,13 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     else:
         display_df = filtered_df[available_cols]
     st.dataframe(display_df, use_container_width=True, height=400)
-    csv = filtered_df[available_cols].to_csv(index=False).encode('utf-8')
-    st.download_button(label="📥 Download dos dados filtrados (CSV)", data=csv,
-                       file_name=f"lockton_dados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                       mime="text/csv")
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        filtered_df[available_cols].to_excel(writer, index=False, sheet_name='Dados')
+    excel_data = output.getvalue()
+    st.download_button(label="📥 Download dos dados filtrados (Excel)", data=excel_data,
+                       file_name=f"lockton_dados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     st.markdown("---")
     st.caption(f"📊 Dashboard desenvolvido para análise de chamados Lockton | Total de registros: {len(df):,}")
 
