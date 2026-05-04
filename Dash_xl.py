@@ -373,7 +373,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
             }
         ))
         fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20))
-        st.plotly_chart(fig_gauge, use_container_width=True)
+        st.plotly_chart(fig_gauge, use_container_width=True, key="gauge")
     
     st.markdown("---")
     
@@ -389,14 +389,14 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                      color_continuous_scale='Blues', text='Quantidade')
         fig.update_traces(textposition='outside')
         fig.update_layout(height=500)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="top_tipos")
     with col2:
         sla_status_chart = pd.crosstab(filtered_df['STATUS'], filtered_df['SLA'])
         fig = px.bar(sla_status_chart, barmode='stack', title="Status dos Chamados vs. Cumprimento de SLA (Técnica)",
                      labels={'value': 'Quantidade', 'variable': 'SLA', 'STATUS': 'Status'},
                      color_discrete_sequence=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
         fig.update_layout(height=500)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="status_sla")
     
     st.markdown("---")
     
@@ -410,7 +410,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                 fig = px.pie(negocio_counts, values='Quantidade', names='Negócio',
                              title="Distribuição de Chamados por Negócio", hole=0.3,
                              color_discrete_sequence=px.colors.qualitative.Set3)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="pie_negocio")
     with col2:
         if 'PRODUTO' in filtered_df.columns:
             produto_counts = filtered_df['PRODUTO'].value_counts().reset_index()
@@ -420,7 +420,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                 fig = px.pie(produto_counts, values='Quantidade', names='Produto',
                              title="Distribuição de Chamados por Produto", hole=0.3,
                              color_discrete_sequence=px.colors.qualitative.Pastel)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="pie_produto")
     
     st.markdown("---")
     
@@ -438,7 +438,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                          color_continuous_scale='Oranges', text='Quantidade')
             fig.update_traces(textposition='outside')
             fig.update_layout(height=450)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="categorias")
         st.markdown("---")
     
     # ============================================
@@ -452,7 +452,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
             fig = px.line(monthly, x='ANO_MES', y='Quantidade', title="Evolução Mensal de Chamados",
                           markers=True, labels={'ANO_MES': 'Mês', 'Quantidade': 'Chamados'})
             fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="evolucao_mensal")
     st.markdown("---")
     
     # ============================================
@@ -469,7 +469,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                              color_continuous_scale='Blues', text='Total Chamados')
                 fig.update_traces(textposition='outside')
                 fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="responsaveis")
         with col2:
             equipe_stats = filtered_df.groupby('EQUIPE').agg({
                 'PROTOCOLO': 'count',
@@ -484,7 +484,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                              color_continuous_scale='RdYlGn', text='Total Chamados', range_color=[0, 100])
                 fig.update_traces(textposition='outside')
                 fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="equipe")
     st.markdown("---")
     
     # ============================================
@@ -500,7 +500,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
             fig = px.pie(keyword_counts, values='Quantidade', names='Palavra-Chave',
                          title="Distribuição de Assuntos por Palavra-Chave", hole=0.3,
                          color_discrete_sequence=px.colors.qualitative.Set3)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="keyword_pie")
     with col2:
         if len(filtered_df) > 0:
             keyword_monthly = filtered_df.groupby(['ANO_MES', 'PALAVRA_CHAVE']).size().reset_index(name='Quantidade')
@@ -513,7 +513,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                               title="Evolução Mensal por Tipo de Assunto", markers=True,
                               labels={'ANO_MES': 'Mês', 'Quantidade': 'Chamados'})
                 fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="keyword_line")
     st.markdown("---")
     
     # ============================================
@@ -529,7 +529,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                          color_continuous_scale='Purples', text='Quantidade')
             fig.update_traces(textposition='outside')
             fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="cpf")
             st.caption("⚠️ Beneficiários que mais abrem chamados - possível necessidade de treinamento")
     with col2:
         gargalos = get_gargalo_analysis(filtered_df)
@@ -541,7 +541,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                              color_continuous_scale='RdYlGn', range_color=[0, 100])
             fig.update_traces(textposition='top center')
             fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="gargalos")
     st.markdown("---")
     
     # ============================================
@@ -557,7 +557,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                        color_discrete_map={'Dentro do prazo': '#2ecc71', 'Fora do prazo': '#e74c3c',
                                            'Não aplicável': '#95a5a6', 'Não informado': '#f1c40f'})
     fig_donut.update_layout(height=450)
-    st.plotly_chart(fig_donut, use_container_width=True)
+    st.plotly_chart(fig_donut, use_container_width=True, key="donut")
     
     # 2️⃣ SLA por Status do Chamado
     sla_status = pd.crosstab(filtered_df['STATUS'], filtered_df['SLA'])
@@ -565,7 +565,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                         labels={'value': 'Quantidade', 'STATUS': 'Status'},
                         color_discrete_sequence=px.colors.qualitative.Set2)
     fig_status.update_layout(height=450)
-    st.plotly_chart(fig_status, use_container_width=True)
+    st.plotly_chart(fig_status, use_container_width=True, key="sla_status")
     
     # 3️⃣ SLA por Equipe (Percentual)
     sla_equipe = pd.crosstab(filtered_df['EQUIPE'], filtered_df['SLA'], normalize='index') * 100
@@ -578,7 +578,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                         labels={'value': 'Percentual (%)', 'variable': 'SLA', 'EQUIPE': 'Equipe'},
                         color_discrete_sequence=['#2ecc71', '#e74c3c'])
     fig_equipe.update_layout(height=450)
-    st.plotly_chart(fig_equipe, use_container_width=True)
+    st.plotly_chart(fig_equipe, use_container_width=True, key="sla_equipe")
     
     # 4️⃣ SLA por Responsável (Ranking)
     if 'RESPONSÁVEL' in filtered_df.columns:
@@ -593,7 +593,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                               color='Percentual', color_continuous_scale='Viridis', text='Percentual')
             fig_resp.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
             fig_resp.update_layout(height=500)
-            st.plotly_chart(fig_resp, use_container_width=True)
+            st.plotly_chart(fig_resp, use_container_width=True, key="ranking_resp")
     
     # 5️⃣ Evolução Temporal do SLA (mensal)
     sla_time = filtered_df.groupby(['ANO_MES', 'SLA']).size().reset_index(name='Quantidade')
@@ -601,7 +601,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                        title="Evolução Mensal do SLA", markers=True,
                        labels={'ANO_MES': 'Mês', 'Quantidade': 'Quantidade de Chamados', 'SLA': 'SLA'})
     fig_time.update_layout(height=450)
-    st.plotly_chart(fig_time, use_container_width=True)
+    st.plotly_chart(fig_time, use_container_width=True, key="sla_time")
     
     # 6️⃣ Heatmap – SLA por Categoria (%)
     if 'CATEGORIA' in filtered_df.columns:
@@ -614,7 +614,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                              labels={'x': 'SLA', 'y': 'Categoria', 'color': '%'},
                              color_continuous_scale='RdYlGn', aspect="auto")
         fig_heat.update_layout(height=500)
-        st.plotly_chart(fig_heat, use_container_width=True)
+        st.plotly_chart(fig_heat, use_container_width=True, key="heatmap_cat")
     
     # 7️⃣ SLA por Tipo de Atendimento (%)
     sla_tipo = pd.crosstab(filtered_df['TIPO ATENDIMENTO'], filtered_df['SLA'], normalize='index') * 100
@@ -630,7 +630,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                       labels={'TIPO ATENDIMENTO': 'Tipo de Atendimento', 'Percentual': 'Percentual (%)'},
                       color_discrete_sequence=['#2ecc71', '#e74c3c'])
     fig_tipo.update_layout(height=450)
-    st.plotly_chart(fig_tipo, use_container_width=True)
+    st.plotly_chart(fig_tipo, use_container_width=True, key="sla_tipo")
     
     # 8️⃣ SLA por Produto (Fora do prazo)
     if 'PRODUTO' in filtered_df.columns:
@@ -645,7 +645,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                           color='Fora do prazo', color_continuous_scale='Reds', text='Fora do prazo')
         fig_prod.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
         fig_prod.update_layout(height=450)
-        st.plotly_chart(fig_prod, use_container_width=True)
+        st.plotly_chart(fig_prod, use_container_width=True, key="prod_fora")
     
     # 9️⃣ SLA por Dia da Semana (%)
     dias_ordem = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -658,7 +658,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                         labels={'x': 'SLA', 'y': 'Dia da Semana', 'color': '%'},
                         color_continuous_scale='RdYlGn', aspect="auto")
     fig_dia.update_layout(height=400)
-    st.plotly_chart(fig_dia, use_container_width=True)
+    st.plotly_chart(fig_dia, use_container_width=True, key="sla_dia")
     
     # 🔟 Pareto – Onde Estoura o SLA
     pareto = (filtered_df[filtered_df['SLA'] == 'Fora do prazo']
@@ -669,7 +669,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                             color='Qtd', color_continuous_scale='Reds', text='Qtd')
         fig_pareto.update_traces(textposition='outside')
         fig_pareto.update_layout(height=450)
-        st.plotly_chart(fig_pareto, use_container_width=True)
+        st.plotly_chart(fig_pareto, use_container_width=True, key="pareto")
     else:
         st.info("Nenhum chamado fora do prazo para exibir no Pareto.")
     
