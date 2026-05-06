@@ -5,7 +5,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from collections import Counter
-from io import BytesIO
 import re
 
 # ============================================
@@ -88,33 +87,6 @@ def get_gargalo_analysis(df):
     gargalos = gargalos[gargalos['Categoria'].notna() & (gargalos['Categoria'] != 'Não informado')]
     return gargalos.sort_values('Tempo Médio (dias)', ascending=False).head(8)
 
-def get_summary_stats(df):
-    """Retorna estatísticas resumidas"""
-    total = len(df)
-    dentro_sla = len(df[df['SLA'] == 'Dentro do prazo'])
-    fora_sla = len(df[df['SLA'] == 'Fora do prazo'])
-    nao_aplicavel = len(df[df['SLA'] == 'Não aplicável'])
-    nao_informado = len(df[df['SLA'] == 'Não informado'])
-    
-    def calc_percent(count, total):
-        if total == 0:
-            return "0 (0.0%)"
-        return f"{count:,} ({round(count/total*100, 1)}%)"
-    
-    stats = {
-        'Total de Chamados': f"{total:,}",
-        'Chamados Abertos': f"{len(df[df['STATUS'] == 'Aberto']):,}",
-        'Chamados Concluídos': f"{len(df[df['STATUS'] == 'Concluído']):,}",
-        'Chamados Cancelados': f"{len(df[df['STATUS'] == 'Cancelado']):,}",
-        'Dentro do SLA': calc_percent(dentro_sla, total),
-        'Fora do SLA': calc_percent(fora_sla, total),
-        'SLA Não Aplicável': calc_percent(nao_aplicavel, total),
-        'SLA Não Informado': calc_percent(nao_informado, total),
-        'Tempo Médio Resolução': f"{round(df[df['TEMPO_RESOLUCAO'].notna()]['TEMPO_RESOLUCAO'].mean(), 1)} dias" if len(df[df['TEMPO_RESOLUCAO'].notna()]) > 0 else "N/A",
-        'Período Analisado': f"{df['ABERTURA_DT'].min().strftime('%d/%m/%Y')} a {df['ABERTURA_DT'].max().strftime('%d/%m/%Y')}" if pd.notna(df['ABERTURA_DT'].min()) else "N/A"
-    }
-    return stats
-
 # ============================================
 # FUNÇÕES DE PROCESSAMENTO (CACHEADAS)
 # ============================================
@@ -131,7 +103,7 @@ def load_and_process_data(uploaded_file):
             df['FECHAMENTO_DT'] = pd.to_datetime(df['FECHAMENTO'], errors='coerce')
             
             # Extrair mês/ano
-            df['MES_ABERTURA'] = df['ABERTURA_DT'].dt.to_period('M').astype(str)
+            df['MES_ABERTURA'] = df['ABERTURA_DT'].dt.strftime('%Y-%m')
             df['ANO_MES'] = df['ABERTURA_DT'].dt.strftime('%Y-%m')
             df['MES_NOME'] = df['ABERTURA_DT'].dt.strftime('%B')
             df['ANO'] = df['ABERTURA_DT'].dt.year
@@ -189,6 +161,7 @@ def get_filter_options(df):
     return options
 
 def apply_filters(df, filters):
+    """Aplica os filtros selecionados ao DataFrame"""
     filtered_df = df.copy()
     
     if filters.get('status') and "TODOS" not in filters['status']:
@@ -206,18 +179,44 @@ def apply_filters(df, filters):
     if filters.get('responsavel') and "TODOS" not in filters['responsavel'] and 'RESPONSÁVEL' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['RESPONSÁVEL'].isin(filters['responsavel'])]
     
-    # Filtro de período – CORRIGIDO
+    # Filtro de período
     if filters.get('periodo_opcao') == 'PERÍODO PERSONALIZADO':
         data_inicio = filters.get('data_inicio')
         data_fim = filters.get('data_fim')
         if data_inicio is not None and data_fim is not None:
-            # Converte para Timestamp e ajusta o fim para o final do dia
             inicio_ts = pd.Timestamp(data_inicio)
             fim_ts = pd.Timestamp(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
             mask = (filtered_df['ABERTURA_DT'] >= inicio_ts) & (filtered_df['ABERTURA_DT'] <= fim_ts)
             filtered_df = filtered_df[mask]
     
     return filtered_df
+
+def get_summary_stats(df):
+    """Retorna estatísticas resumidas"""
+    total = len(df)
+    dentro_sla = len(df[df['SLA'] == 'Dentro do prazo'])
+    fora_sla = len(df[df['SLA'] == 'Fora do prazo'])
+    nao_aplicavel = len(df[df['SLA'] == 'Não aplicável'])
+    nao_informado = len(df[df['SLA'] == 'Não informado'])
+    
+    def calc_percent(count, total):
+        if total == 0:
+            return "0 (0.0%)"
+        return f"{count:,} ({round(count/total*100, 1)}%)"
+    
+    stats = {
+        'Total de Chamados': f"{total:,}",
+        'Chamados Abertos': f"{len(df[df['STATUS'] == 'Aberto']):,}",
+        'Chamados Concluídos': f"{len(df[df['STATUS'] == 'Concluído']):,}",
+        'Chamados Cancelados': f"{len(df[df['STATUS'] == 'Cancelado']):,}",
+        'Dentro do SLA': calc_percent(dentro_sla, total),
+        'Fora do SLA': calc_percent(fora_sla, total),
+        'SLA Não Aplicável': calc_percent(nao_aplicavel, total),
+        'SLA Não Informado': calc_percent(nao_informado, total),
+        'Tempo Médio Resolução': f"{round(df[df['TEMPO_RESOLUCAO'].notna()]['TEMPO_RESOLUCAO'].mean(), 1)} dias" if len(df[df['TEMPO_RESOLUCAO'].notna()]) > 0 else "N/A",
+        'Período Analisado': f"{df['ABERTURA_DT'].min().strftime('%d/%m/%Y')} a {df['ABERTURA_DT'].max().strftime('%d/%m/%Y')}" if pd.notna(df['ABERTURA_DT'].min()) else "N/A"
+    }
+    return stats
 
 def extract_percent_value(metric_str):
     """Extrai o valor percentual de uma string de métrica"""
@@ -233,12 +232,16 @@ def multiselect_with_all(label, options, default_all=True, key=None):
     """Cria um multiselect com a opção 'TODOS'"""
     if not options:
         return []
+    
     options_with_all = ['TODOS'] + options
+    
     if default_all:
         default = ['TODOS']
     else:
         default = options[:3] if len(options) > 3 else options
+    
     selected = st.multiselect(label, options=options_with_all, default=default, key=key)
+    
     if 'TODOS' in selected:
         return ['TODOS']
     return selected
@@ -250,7 +253,6 @@ def multiselect_with_all(label, options, default_all=True, key=None):
 st.title("📊 Lockton Analytics - Movimentação de Beneficiários")
 st.markdown("---")
 
-# Sidebar - Upload e Filtros
 with st.sidebar:
     st.header("📁 Upload de Dados")
     uploaded_file = st.file_uploader(
@@ -270,19 +272,25 @@ with st.sidebar:
         
         if df is not None and len(df) > 0:
             options = get_filter_options(df)
+            
             min_date = df['ABERTURA_DT'].min().date()
             max_date = df['ABERTURA_DT'].max().date()
             
             filters['status'] = multiselect_with_all("Status", options['status'], default_all=True, key="status_filter")
             filters['tipo_atendimento'] = multiselect_with_all("Tipo de Atendimento", options['tipo_atendimento'], default_all=True, key="tipo_filter")
+            
             if options['negocio']:
                 filters['negocio'] = multiselect_with_all("Negócio", options['negocio'], default_all=True, key="negocio_filter")
+            
             if options['empresa']:
                 filters['empresa'] = multiselect_with_all("Empresa (SUBESTIPULANTE)", options['empresa'], default_all=True, key="empresa_filter")
+            
             if options['categoria']:
                 filters['categoria'] = multiselect_with_all("Categoria", options['categoria'], default_all=True, key="categoria_filter")
+            
             if options['produto']:
                 filters['produto'] = multiselect_with_all("Produto", options['produto'], default_all=True, key="produto_filter")
+            
             if options['responsavel']:
                 filters['responsavel'] = multiselect_with_all("Responsável", options['responsavel'], default_all=True, key="responsavel_filter")
             
@@ -293,7 +301,9 @@ with st.sidebar:
                 index=0,
                 key="periodo_radio"
             )
+            
             filters['periodo_opcao'] = periodo_opcao
+            
             if periodo_opcao == "PERÍODO PERSONALIZADO":
                 col1, col2 = st.columns(2)
                 with col1:
@@ -344,6 +354,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     
     st.markdown("### ⏱️ Métricas de SLA (Equipe Técnica)")
     col1, col2, col3, col4 = st.columns(4)
+    
     with col1:
         st.metric("✅ Dentro do SLA", stats['Dentro do SLA'])
     with col2:
@@ -353,6 +364,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     with col4:
         st.metric("📅 Período", stats['Período Analisado'].split(' a ')[0] if ' a ' in stats['Período Analisado'] else stats['Período Analisado'])
     
+    # Gráfico de Gauge para SLA
     dentro_valor = extract_percent_value(stats['Dentro do SLA'])
     if dentro_valor > 0:
         fig_gauge = go.Figure(go.Indicator(
@@ -378,7 +390,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     st.markdown("---")
     
     # ============================================
-    # 2. GRÁFICOS PRINCIPAIS
+    # 2. GRÁFICOS PRINCIPAIS (mantidos)
     # ============================================
     col1, col2 = st.columns(2)
     with col1:
@@ -391,13 +403,13 @@ if uploaded_file is not None and df is not None and len(df) > 0:
         fig.update_layout(height=500)
         st.plotly_chart(fig, use_container_width=True, key="top_tipos")
     with col2:
-        sla_status_chart = pd.crosstab(filtered_df['STATUS'], filtered_df['SLA'])
-        fig = px.bar(sla_status_chart, barmode='stack', title="Status dos Chamados vs. Cumprimento de SLA (Técnica)",
+        sla_status = pd.crosstab(filtered_df['STATUS'], filtered_df['SLA'])
+        fig = px.bar(sla_status, barmode='stack',
+                     title="Status dos Chamados vs. Cumprimento de SLA",
                      labels={'value': 'Quantidade', 'variable': 'SLA', 'STATUS': 'Status'},
                      color_discrete_sequence=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
         fig.update_layout(height=500)
         st.plotly_chart(fig, use_container_width=True, key="status_sla")
-    
     st.markdown("---")
     
     col1, col2 = st.columns(2)
@@ -421,7 +433,6 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                              title="Distribuição de Chamados por Produto", hole=0.3,
                              color_discrete_sequence=px.colors.qualitative.Pastel)
                 st.plotly_chart(fig, use_container_width=True, key="pie_produto")
-    
     st.markdown("---")
     
     # ============================================
@@ -452,7 +463,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
             fig = px.line(monthly, x='ANO_MES', y='Quantidade', title="Evolução Mensal de Chamados",
                           markers=True, labels={'ANO_MES': 'Mês', 'Quantidade': 'Chamados'})
             fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True, key="evolucao_mensal")
+            st.plotly_chart(fig, use_container_width=True, key="evolucao")
     st.markdown("---")
     
     # ============================================
@@ -537,7 +548,9 @@ if uploaded_file is not None and df is not None and len(df) > 0:
             fig = px.scatter(gargalos, x='Total Chamados', y='Tempo Médio (dias)', text='Categoria',
                              size='Total Chamados', color='% SLA OK',
                              title="Gargalos: Categorias que Mais Demoram",
-                             labels={'Total Chamados': 'Volume de Chamados', 'Tempo Médio (dias)': 'Tempo Médio de Resolução', '% SLA OK': '% SLA OK'},
+                             labels={'Total Chamados': 'Volume de Chamados',
+                                    'Tempo Médio (dias)': 'Tempo Médio de Resolução',
+                                    '% SLA OK': '% SLA OK'},
                              color_continuous_scale='RdYlGn', range_color=[0, 100])
             fig.update_traces(textposition='top center')
             fig.update_layout(height=400)
@@ -545,133 +558,139 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     st.markdown("---")
     
     # ============================================
-    # 8. ANÁLISES DETALHADAS DE SLA
+    # 8. ANÁLISES DETALHADAS DE SLA (com expanders)
     # ============================================
     st.header("📊 Análises Detalhadas de SLA")
     
-    # 1️⃣ Distribuição Geral do SLA
-    sla_dist = filtered_df['SLA'].value_counts().reset_index()
-    sla_dist.columns = ['SLA', 'Quantidade']
-    fig_donut = px.pie(sla_dist, names='SLA', values='Quantidade', hole=0.55,
-                       title="Distribuição Geral do SLA", color='SLA',
-                       color_discrete_map={'Dentro do prazo': '#2ecc71', 'Fora do prazo': '#e74c3c',
-                                           'Não aplicável': '#95a5a6', 'Não informado': '#f1c40f'})
-    fig_donut.update_layout(height=450)
-    st.plotly_chart(fig_donut, use_container_width=True, key="donut")
+    with st.expander("1️⃣ Distribuição Geral do SLA"):
+        sla_dist = filtered_df['SLA'].value_counts().reset_index()
+        sla_dist.columns = ['SLA', 'Quantidade']
+        fig_donut = px.pie(sla_dist, names='SLA', values='Quantidade', hole=0.55,
+                           title="Distribuição Geral do SLA", color='SLA',
+                           color_discrete_map={'Dentro do prazo': '#2ecc71', 'Fora do prazo': '#e74c3c',
+                                               'Não aplicável': '#95a5a6', 'Não informado': '#f1c40f'})
+        fig_donut.update_layout(height=450)
+        st.plotly_chart(fig_donut, use_container_width=True, key="donut")
     
-    # 2️⃣ SLA por Status do Chamado
-    sla_status = pd.crosstab(filtered_df['STATUS'], filtered_df['SLA'])
-    fig_status = px.bar(sla_status, barmode='stack', title="SLA por Status do Chamado",
-                        labels={'value': 'Quantidade', 'STATUS': 'Status'},
-                        color_discrete_sequence=px.colors.qualitative.Set2)
-    fig_status.update_layout(height=450)
-    st.plotly_chart(fig_status, use_container_width=True, key="sla_status")
+    with st.expander("2️⃣ SLA por Status do Chamado"):
+        sla_status = pd.crosstab(filtered_df['STATUS'], filtered_df['SLA'])
+        fig_status = px.bar(sla_status, barmode='stack', title="SLA por Status do Chamado",
+                            labels={'value': 'Quantidade', 'STATUS': 'Status'},
+                            color_discrete_sequence=px.colors.qualitative.Set2)
+        fig_status.update_layout(height=450)
+        st.plotly_chart(fig_status, use_container_width=True, key="sla_status_bar")
     
-    # 3️⃣ SLA por Equipe (Percentual)
-    sla_equipe = pd.crosstab(filtered_df['EQUIPE'], filtered_df['SLA'], normalize='index') * 100
-    sla_equipe = sla_equipe.reset_index().fillna(0)
-    for col in ['Dentro do prazo', 'Fora do prazo', 'Não aplicável', 'Não informado']:
-        if col not in sla_equipe.columns:
-            sla_equipe[col] = 0
-    fig_equipe = px.bar(sla_equipe, x='EQUIPE', y=['Dentro do prazo', 'Fora do prazo'],
-                        barmode='stack', title="Percentual de SLA por Equipe (%)",
-                        labels={'value': 'Percentual (%)', 'variable': 'SLA', 'EQUIPE': 'Equipe'},
-                        color_discrete_sequence=['#2ecc71', '#e74c3c'])
-    fig_equipe.update_layout(height=450)
-    st.plotly_chart(fig_equipe, use_container_width=True, key="sla_equipe")
+    with st.expander("3️⃣ SLA por Equipe (Percentual)"):
+        sla_equipe = pd.crosstab(filtered_df['EQUIPE'], filtered_df['SLA'], normalize='index') * 100
+        sla_equipe = sla_equipe.reset_index().fillna(0)
+        for col in ['Dentro do prazo', 'Fora do prazo']:
+            if col not in sla_equipe.columns:
+                sla_equipe[col] = 0
+        fig_equipe = px.bar(sla_equipe, x='EQUIPE', y=['Dentro do prazo', 'Fora do prazo'],
+                            barmode='stack', title="Percentual de SLA por Equipe (%)",
+                            labels={'value': 'Percentual (%)', 'variable': 'SLA', 'EQUIPE': 'Equipe'},
+                            color_discrete_sequence=['#2ecc71', '#e74c3c'])
+        fig_equipe.update_layout(height=450)
+        st.plotly_chart(fig_equipe, use_container_width=True, key="sla_equipe")
     
-    # 4️⃣ SLA por Responsável (Ranking)
-    if 'RESPONSÁVEL' in filtered_df.columns:
-        sla_resp = (filtered_df.groupby('RESPONSÁVEL')['SLA']
-                    .value_counts(normalize=True).rename('Percentual').reset_index())
-        sla_resp = sla_resp[sla_resp['SLA'] == 'Dentro do prazo']
-        sla_resp['Percentual'] *= 100
-        sla_resp = sla_resp.sort_values('Percentual', ascending=True)
-        if len(sla_resp) > 0:
-            fig_resp = px.bar(sla_resp, x='Percentual', y='RESPONSÁVEL', orientation='h',
-                              title="Ranking de SLA por Responsável (% dentro do prazo)",
-                              color='Percentual', color_continuous_scale='Viridis', text='Percentual')
-            fig_resp.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-            fig_resp.update_layout(height=500)
-            st.plotly_chart(fig_resp, use_container_width=True, key="ranking_resp")
+    with st.expander("4️⃣ Ranking por Responsável (% dentro do prazo)"):
+        if 'RESPONSÁVEL' in filtered_df.columns:
+            sla_resp = (filtered_df.groupby('RESPONSÁVEL')['SLA']
+                        .value_counts(normalize=True).rename('Percentual').reset_index())
+            sla_resp = sla_resp[sla_resp['SLA'] == 'Dentro do prazo']
+            sla_resp['Percentual'] *= 100
+            sla_resp = sla_resp.sort_values('Percentual', ascending=True)
+            if not sla_resp.empty:
+                fig_resp = px.bar(sla_resp, x='Percentual', y='RESPONSÁVEL', orientation='h',
+                                  title="Ranking (% dentro do prazo)", color='Percentual',
+                                  color_continuous_scale='Viridis', text='Percentual')
+                fig_resp.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                fig_resp.update_layout(height=500)
+                st.plotly_chart(fig_resp, use_container_width=True, key="ranking_resp")
+            else:
+                st.info("Não há responsáveis com SLA dentro do prazo.")
     
-    # 5️⃣ Evolução Temporal do SLA (mensal)
-    sla_time = filtered_df.groupby(['ANO_MES', 'SLA']).size().reset_index(name='Quantidade')
-    fig_time = px.line(sla_time, x='ANO_MES', y='Quantidade', color='SLA',
-                       title="Evolução Mensal do SLA", markers=True,
-                       labels={'ANO_MES': 'Mês', 'Quantidade': 'Quantidade de Chamados', 'SLA': 'SLA'})
-    fig_time.update_layout(height=450)
-    st.plotly_chart(fig_time, use_container_width=True, key="sla_time")
+    with st.expander("5️⃣ Evolução Temporal do SLA (mensal)"):
+        sla_time = filtered_df.groupby(['ANO_MES', 'SLA']).size().reset_index(name='Quantidade')
+        fig_time = px.line(sla_time, x='ANO_MES', y='Quantidade', color='SLA',
+                           title="Evolução Mensal do SLA", markers=True,
+                           labels={'ANO_MES': 'Mês', 'Quantidade': 'Quantidade'})
+        fig_time.update_layout(height=450)
+        st.plotly_chart(fig_time, use_container_width=True, key="sla_time")
     
-    # 6️⃣ Heatmap – SLA por Categoria (%)
-    if 'CATEGORIA' in filtered_df.columns:
-        heat = pd.crosstab(filtered_df['CATEGORIA'], filtered_df['SLA'], normalize='index') * 100
-        heat = heat.fillna(0)
-        for col in ['Dentro do prazo', 'Fora do prazo', 'Não aplicável', 'Não informado']:
-            if col not in heat.columns:
-                heat[col] = 0
-        fig_heat = px.imshow(heat, text_auto=".1f", title="Heatmap de SLA por Categoria (%)",
-                             labels={'x': 'SLA', 'y': 'Categoria', 'color': '%'},
-                             color_continuous_scale='RdYlGn', aspect="auto")
-        fig_heat.update_layout(height=500)
-        st.plotly_chart(fig_heat, use_container_width=True, key="heatmap_cat")
+    with st.expander("6️⃣ Heatmap – SLA por Categoria (%)"):
+        if 'CATEGORIA' in filtered_df.columns:
+            heat = pd.crosstab(filtered_df['CATEGORIA'], filtered_df['SLA'], normalize='index') * 100
+            heat = heat.fillna(0)
+            for col in ['Dentro do prazo', 'Fora do prazo', 'Não aplicável', 'Não informado']:
+                if col not in heat.columns:
+                    heat[col] = 0
+            fig_heat = px.imshow(heat, text_auto=".1f", title="Heatmap por Categoria (%)",
+                                 labels={'x': 'SLA', 'y': 'Categoria', 'color': '%'},
+                                 color_continuous_scale='RdYlGn', aspect="auto")
+            fig_heat.update_layout(height=500)
+            st.plotly_chart(fig_heat, use_container_width=True, key="heatmap")
+        else:
+            st.info("Coluna 'CATEGORIA' não disponível.")
     
-    # 7️⃣ SLA por Tipo de Atendimento (%)
-    sla_tipo = pd.crosstab(filtered_df['TIPO ATENDIMENTO'], filtered_df['SLA'], normalize='index') * 100
-    sla_tipo = sla_tipo.reset_index().fillna(0)
-    for col in ['Dentro do prazo', 'Fora do prazo']:
-        if col not in sla_tipo.columns:
-            sla_tipo[col] = 0
-    sla_tipo_melted = sla_tipo.melt(id_vars=['TIPO ATENDIMENTO'],
-                                    value_vars=['Dentro do prazo', 'Fora do prazo'],
-                                    var_name='SLA_Categoria', value_name='Percentual')
-    fig_tipo = px.bar(sla_tipo_melted, x='TIPO ATENDIMENTO', y='Percentual', color='SLA_Categoria',
-                      barmode='stack', title="SLA por Tipo de Atendimento (%)",
-                      labels={'TIPO ATENDIMENTO': 'Tipo de Atendimento', 'Percentual': 'Percentual (%)'},
-                      color_discrete_sequence=['#2ecc71', '#e74c3c'])
-    fig_tipo.update_layout(height=450)
-    st.plotly_chart(fig_tipo, use_container_width=True, key="sla_tipo")
+    with st.expander("7️⃣ SLA por Tipo de Atendimento (%)"):
+        sla_tipo = pd.crosstab(filtered_df['TIPO ATENDIMENTO'], filtered_df['SLA'], normalize='index') * 100
+        sla_tipo = sla_tipo.reset_index().fillna(0)
+        for col in ['Dentro do prazo', 'Fora do prazo']:
+            if col not in sla_tipo.columns:
+                sla_tipo[col] = 0
+        sla_tipo_melted = sla_tipo.melt(id_vars=['TIPO ATENDIMENTO'],
+                                        value_vars=['Dentro do prazo', 'Fora do prazo'],
+                                        var_name='SLA_Categoria', value_name='Percentual')
+        fig_tipo = px.bar(sla_tipo_melted, x='TIPO ATENDIMENTO', y='Percentual', color='SLA_Categoria',
+                          barmode='stack', title="SLA por Tipo de Atendimento (%)",
+                          labels={'TIPO ATENDIMENTO': 'Tipo', 'Percentual': 'Percentual (%)'},
+                          color_discrete_sequence=['#2ecc71', '#e74c3c'])
+        fig_tipo.update_layout(height=450)
+        st.plotly_chart(fig_tipo, use_container_width=True, key="sla_tipo")
     
-    # 8️⃣ SLA por Produto (Fora do prazo)
-    if 'PRODUTO' in filtered_df.columns:
-        sla_prod = pd.crosstab(filtered_df['PRODUTO'], filtered_df['SLA'], normalize='index') * 100
-        sla_prod = sla_prod.reset_index().fillna(0)
-        if 'Fora do prazo' not in sla_prod.columns:
-            sla_prod['Fora do prazo'] = 0
-        sla_prod = sla_prod.sort_values('Fora do prazo', ascending=False).head(10)
-        fig_prod = px.bar(sla_prod, x='PRODUTO', y='Fora do prazo',
-                          title="Produtos com Maior % Fora do SLA",
-                          labels={'PRODUTO': 'Produto', 'Fora do prazo': '% Fora do SLA'},
-                          color='Fora do prazo', color_continuous_scale='Reds', text='Fora do prazo')
-        fig_prod.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-        fig_prod.update_layout(height=450)
-        st.plotly_chart(fig_prod, use_container_width=True, key="prod_fora")
+    with st.expander("8️⃣ Produtos com maior % Fora do SLA"):
+        if 'PRODUTO' in filtered_df.columns:
+            sla_prod = pd.crosstab(filtered_df['PRODUTO'], filtered_df['SLA'], normalize='index') * 100
+            sla_prod = sla_prod.reset_index().fillna(0)
+            if 'Fora do prazo' not in sla_prod.columns:
+                sla_prod['Fora do prazo'] = 0
+            sla_prod = sla_prod.sort_values('Fora do prazo', ascending=False).head(10)
+            fig_prod = px.bar(sla_prod, x='PRODUTO', y='Fora do prazo',
+                              title="Produtos com Maior % Fora do SLA",
+                              labels={'PRODUTO': 'Produto', 'Fora do prazo': '% Fora'},
+                              color='Fora do prazo', color_continuous_scale='Reds', text='Fora do prazo')
+            fig_prod.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+            fig_prod.update_layout(height=450)
+            st.plotly_chart(fig_prod, use_container_width=True, key="prod_fora")
+        else:
+            st.info("Coluna 'PRODUTO' não disponível.")
     
-    # 9️⃣ SLA por Dia da Semana (%)
-    dias_ordem = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    dias_pt = {'Monday': 'Segunda', 'Tuesday': 'Terça', 'Wednesday': 'Quarta',
-               'Thursday': 'Quinta', 'Friday': 'Sexta', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
-    sla_dia = pd.crosstab(filtered_df['DIA_SEMANA'], filtered_df['SLA'], normalize='index') * 100
-    sla_dia = sla_dia.reindex(dias_ordem).fillna(0)
-    sla_dia.index = sla_dia.index.map(dias_pt)
-    fig_dia = px.imshow(sla_dia, text_auto=".1f", title="SLA por Dia da Semana (%)",
-                        labels={'x': 'SLA', 'y': 'Dia da Semana', 'color': '%'},
-                        color_continuous_scale='RdYlGn', aspect="auto")
-    fig_dia.update_layout(height=400)
-    st.plotly_chart(fig_dia, use_container_width=True, key="sla_dia")
+    with st.expander("9️⃣ SLA por Dia da Semana (%)"):
+        dias_ordem = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        dias_pt = {'Monday': 'Segunda', 'Tuesday': 'Terça', 'Wednesday': 'Quarta',
+                   'Thursday': 'Quinta', 'Friday': 'Sexta', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
+        sla_dia = pd.crosstab(filtered_df['DIA_SEMANA'], filtered_df['SLA'], normalize='index') * 100
+        sla_dia = sla_dia.reindex(dias_ordem).fillna(0)
+        sla_dia.index = sla_dia.index.map(dias_pt)
+        fig_dia = px.imshow(sla_dia, text_auto=".1f", title="SLA por Dia da Semana (%)",
+                            labels={'x': 'SLA', 'y': 'Dia da Semana', 'color': '%'},
+                            color_continuous_scale='RdYlGn', aspect="auto")
+        fig_dia.update_layout(height=400)
+        st.plotly_chart(fig_dia, use_container_width=True, key="sla_dia")
     
-    # 🔟 Pareto – Onde Estoura o SLA
-    pareto = (filtered_df[filtered_df['SLA'] == 'Fora do prazo']
-              .groupby('CATEGORIA').size().sort_values(ascending=False).reset_index(name='Qtd').head(10))
-    if len(pareto) > 0:
-        fig_pareto = px.bar(pareto, x='Qtd', y='CATEGORIA', orientation='h',
-                            title="Pareto – Principais Causas de SLA Fora do Prazo",
-                            color='Qtd', color_continuous_scale='Reds', text='Qtd')
-        fig_pareto.update_traces(textposition='outside')
-        fig_pareto.update_layout(height=450)
-        st.plotly_chart(fig_pareto, use_container_width=True, key="pareto")
-    else:
-        st.info("Nenhum chamado fora do prazo para exibir no Pareto.")
+    with st.expander("🔟 Pareto – Onde Estoura o SLA"):
+        pareto = (filtered_df[filtered_df['SLA'] == 'Fora do prazo']
+                  .groupby('CATEGORIA').size().sort_values(ascending=False).reset_index(name='Qtd').head(10))
+        if not pareto.empty:
+            fig_pareto = px.bar(pareto, x='Qtd', y='CATEGORIA', orientation='h',
+                                title="Causas de SLA Fora do Prazo",
+                                color='Qtd', color_continuous_scale='Reds', text='Qtd')
+            fig_pareto.update_traces(textposition='outside')
+            fig_pareto.update_layout(height=450)
+            st.plotly_chart(fig_pareto, use_container_width=True, key="pareto")
+        else:
+            st.info("Nenhum chamado fora do prazo.")
     
     st.markdown("---")
     
@@ -681,12 +700,20 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     st.subheader("🔍 Consultar Protocolos por SLA")
     col1, col2 = st.columns(2)
     with col1:
-        sla_filtro = st.multiselect("Filtrar por SLA:",
-                                     options=['Dentro do prazo', 'Fora do prazo', 'Não aplicável', 'Não informado'],
-                                     default=['Fora do prazo'], key="sla_filter_protocolos")
+        sla_filtro = st.multiselect(
+            "Filtrar por SLA:",
+            options=['Dentro do prazo', 'Fora do prazo', 'Não aplicável', 'Não informado'],
+            default=['Fora do prazo'],
+            key="sla_filter_protocolos"
+        )
     with col2:
-        status_filtro = st.multiselect("Filtrar por Status:", options=filtered_df['STATUS'].unique().tolist(),
-                                       default=[], key="status_filter_protocolos")
+        status_filtro = st.multiselect(
+            "Filtrar por Status:",
+            options=filtered_df['STATUS'].unique().tolist(),
+            default=[],
+            key="status_filter_protocolos"
+        )
+    
     df_protocolos = filtered_df.copy()
     if sla_filtro:
         df_protocolos = df_protocolos[df_protocolos['SLA'].isin(sla_filtro)]
@@ -698,13 +725,13 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     colunas_existentes = [c for c in colunas_protocolo if c in df_protocolos.columns]
     if len(df_protocolos) > 0:
         st.dataframe(df_protocolos[colunas_existentes], use_container_width=True, height=400)
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_protocolos[colunas_existentes].to_excel(writer, index=False, sheet_name='Protocolos')
-        excel_data = output.getvalue()
-        st.download_button(label="📥 Download dos protocolos filtrados (Excel)", data=excel_data,
-                           file_name=f"protocolos_sla_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        csv_protocolos = df_protocolos[colunas_existentes].to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download dos protocolos filtrados (CSV)",
+            data=csv_protocolos,
+            file_name=f"protocolos_sla_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
     else:
         st.info("Nenhum protocolo encontrado com os filtros selecionados.")
     st.markdown("---")
@@ -719,9 +746,11 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     available_cols = [col for col in display_cols if col in filtered_df.columns]
     if 'TEMPO_RESOLUCAO' in filtered_df.columns:
         filtered_df['DIAS_RESOLUCAO'] = filtered_df['TEMPO_RESOLUCAO'].apply(
-            lambda x: f"{x:.0f} dias" if pd.notna(x) else "Não resolvido")
+            lambda x: f"{x:.0f} dias" if pd.notna(x) else "Não resolvido"
+        )
         if 'DIAS_RESOLUCAO' in filtered_df.columns:
             available_cols.append('DIAS_RESOLUCAO')
+    
     page_size = 100
     total_pages = (len(filtered_df) + page_size - 1) // page_size
     if total_pages > 1:
@@ -736,14 +765,15 @@ if uploaded_file is not None and df is not None and len(df) > 0:
         st.caption(f"Mostrando registros {start_idx + 1} a {end_idx} de {len(filtered_df):,}")
     else:
         display_df = filtered_df[available_cols]
+    
     st.dataframe(display_df, use_container_width=True, height=400)
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        filtered_df[available_cols].to_excel(writer, index=False, sheet_name='Dados')
-    excel_data = output.getvalue()
-    st.download_button(label="📥 Download dos dados filtrados (Excel)", data=excel_data,
-                       file_name=f"lockton_dados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    csv = filtered_df[available_cols].to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download dos dados filtrados (CSV)",
+        data=csv,
+        file_name=f"lockton_dados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv"
+    )
     st.markdown("---")
     st.caption(f"📊 Dashboard desenvolvido para análise de chamados Lockton | Total de registros: {len(df):,}")
 
@@ -760,7 +790,7 @@ else:
         - `FECHAMENTO` - Data/hora de fechamento (pode ser vazio)
         - `TIPO ATENDIMENTO` - Tipo da demanda
         - `ASSUNTO` - Descrição do chamado
-        - `EQUIPE` - Equipe responsável (Lockton, JBS, etc.) – essencial para cálculo do SLA
+        - `EQUIPE` - Equipe responsável (Lockton, JBS, etc.)
         
         ### Colunas opcionais:
         - `NEGÓCIO`, `CATEGORIA`, `PRODUTO`, `SUBESTIPULANTE`, `RESPONSÁVEL`, `SOLICITANTE`, `CPF BENEFICIARIO`
