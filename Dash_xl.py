@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from collections import Counter
 import re
+from io import BytesIO  # ← necessário para gerar Excel em memória
 
 # ============================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -336,9 +337,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     filtered_df = apply_filters(df, filters)
     st.info(f"📊 Mostrando {len(filtered_df):,} de {len(df):,} chamados")
     
-    # ============================================
     # 1. VISÃO GERAL - KPI CARDS
-    # ============================================
     st.subheader("📈 Visão Geral")
     stats = get_summary_stats(filtered_df)
     
@@ -354,7 +353,6 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     
     st.markdown("### ⏱️ Métricas de SLA (Equipe Técnica)")
     col1, col2, col3, col4 = st.columns(4)
-    
     with col1:
         st.metric("✅ Dentro do SLA", stats['Dentro do SLA'])
     with col2:
@@ -364,7 +362,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     with col4:
         st.metric("📅 Período", stats['Período Analisado'].split(' a ')[0] if ' a ' in stats['Período Analisado'] else stats['Período Analisado'])
     
-    # Gráfico de Gauge para SLA
+    # Gráfico de Gauge
     dentro_valor = extract_percent_value(stats['Dentro do SLA'])
     if dentro_valor > 0:
         fig_gauge = go.Figure(go.Indicator(
@@ -386,12 +384,9 @@ if uploaded_file is not None and df is not None and len(df) > 0:
         ))
         fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20))
         st.plotly_chart(fig_gauge, use_container_width=True, key="gauge")
-    
     st.markdown("---")
     
-    # ============================================
-    # 2. GRÁFICOS PRINCIPAIS (mantidos)
-    # ============================================
+    # 2. GRÁFICOS PRINCIPAIS
     col1, col2 = st.columns(2)
     with col1:
         tipo_counts = filtered_df['TIPO ATENDIMENTO'].value_counts().head(10).reset_index()
@@ -435,9 +430,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                 st.plotly_chart(fig, use_container_width=True, key="pie_produto")
     st.markdown("---")
     
-    # ============================================
     # 3. ANÁLISE DE CATEGORIA
-    # ============================================
     if 'CATEGORIA' in filtered_df.columns:
         st.subheader("🔍 Análise de Categoria")
         categoria_counts = filtered_df['CATEGORIA'].value_counts().head(10).reset_index()
@@ -452,9 +445,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
             st.plotly_chart(fig, use_container_width=True, key="categorias")
         st.markdown("---")
     
-    # ============================================
     # 4. EVOLUÇÃO TEMPORAL
-    # ============================================
     st.subheader("📅 Evolução Temporal")
     if len(filtered_df) > 0:
         monthly = filtered_df.groupby('ANO_MES').size().reset_index(name='Quantidade')
@@ -466,9 +457,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
             st.plotly_chart(fig, use_container_width=True, key="evolucao")
     st.markdown("---")
     
-    # ============================================
     # 5. ANÁLISE DE PERFORMANCE POR RESPONSÁVEL
-    # ============================================
     st.subheader("👥 Performance por Responsável")
     if 'RESPONSÁVEL' in filtered_df.columns:
         col1, col2 = st.columns(2)
@@ -498,9 +487,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                 st.plotly_chart(fig, use_container_width=True, key="equipe")
     st.markdown("---")
     
-    # ============================================
     # 6. ANÁLISE DE PALAVRAS-CHAVE
-    # ============================================
     st.subheader("🏷️ Análise de Palavras-Chave nos Assuntos")
     col1, col2 = st.columns(2)
     with col1:
@@ -527,9 +514,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
                 st.plotly_chart(fig, use_container_width=True, key="keyword_line")
     st.markdown("---")
     
-    # ============================================
     # 7. ANÁLISE DE REINCIDÊNCIA E GARGALOS
-    # ============================================
     st.subheader("🔄 Análise de Reincidência e Gargalos")
     col1, col2 = st.columns(2)
     with col1:
@@ -694,9 +679,7 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     
     st.markdown("---")
     
-    # ============================================
-    # 9. VISUALIZAÇÃO DE PROTOCOLOS POR SLA
-    # ============================================
+    # 9. VISUALIZAÇÃO DE PROTOCOLOS POR SLA (download Excel)
     st.subheader("🔍 Consultar Protocolos por SLA")
     col1, col2 = st.columns(2)
     with col1:
@@ -725,20 +708,23 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     colunas_existentes = [c for c in colunas_protocolo if c in df_protocolos.columns]
     if len(df_protocolos) > 0:
         st.dataframe(df_protocolos[colunas_existentes], use_container_width=True, height=400)
-        csv_protocolos = df_protocolos[colunas_existentes].to_csv(index=False).encode('utf-8')
+        
+        # Download em Excel (substitui CSV)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_protocolos[colunas_existentes].to_excel(writer, index=False, sheet_name='Protocolos')
+        excel_data = output.getvalue()
         st.download_button(
-            label="📥 Download dos protocolos filtrados (CSV)",
-            data=csv_protocolos,
-            file_name=f"protocolos_sla_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
+            label="📥 Download dos protocolos filtrados (Excel)",
+            data=excel_data,
+            file_name=f"protocolos_sla_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
         st.info("Nenhum protocolo encontrado com os filtros selecionados.")
     st.markdown("---")
     
-    # ============================================
-    # 10. TABELA DE DADOS
-    # ============================================
+    # 10. TABELA DE DADOS (download Excel)
     st.subheader("📋 Tabela de Dados Detalhada")
     display_cols = ['PROTOCOLO', 'STATUS', 'SLA', 'EQUIPE', 'RESPONSÁVEL', 'PALAVRA_CHAVE',
                     'TIPO ATENDIMENTO', 'ABERTURA', 'FECHAMENTO', 'TEMPO_RESOLUCAO',
@@ -767,12 +753,17 @@ if uploaded_file is not None and df is not None and len(df) > 0:
         display_df = filtered_df[available_cols]
     
     st.dataframe(display_df, use_container_width=True, height=400)
-    csv = filtered_df[available_cols].to_csv(index=False).encode('utf-8')
+    
+    # Download em Excel (substitui CSV)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        filtered_df[available_cols].to_excel(writer, index=False, sheet_name='Dados')
+    excel_data = output.getvalue()
     st.download_button(
-        label="📥 Download dos dados filtrados (CSV)",
-        data=csv,
-        file_name=f"lockton_dados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
+        label="📥 Download dos dados filtrados (Excel)",
+        data=excel_data,
+        file_name=f"lockton_dados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     st.markdown("---")
     st.caption(f"📊 Dashboard desenvolvido para análise de chamados Lockton | Total de registros: {len(df):,}")
