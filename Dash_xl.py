@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from collections import Counter
 import re
-from io import BytesIO  # ← necessário para gerar Excel em memória
+from io import BytesIO
 
 # ============================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -17,6 +17,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Inicializa o contador de reset (se não existir)
+if 'reset_counter' not in st.session_state:
+    st.session_state.reset_counter = 0
 
 # ============================================
 # FUNÇÕES DE ANÁLISE
@@ -100,8 +104,8 @@ def load_and_process_data(uploaded_file):
             df = pd.read_excel(uploaded_file, sheet_name=0)
             
             # Processar datas
-            df['ABERTURA_DT'] = pd.to_datetime(df['ABERTURA'], errors='coerce')
-            df['FECHAMENTO_DT'] = pd.to_datetime(df['FECHAMENTO'], errors='coerce')
+            df['ABERTURA_DT'] = pd.to_datetime(df['ABERTURA'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+            df['FECHAMENTO_DT'] = pd.to_datetime(df['FECHAMENTO'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
             
             # Extrair mês/ano
             df['MES_ABERTURA'] = df['ABERTURA_DT'].dt.strftime('%Y-%m')
@@ -277,30 +281,35 @@ with st.sidebar:
             min_date = df['ABERTURA_DT'].min().date()
             max_date = df['ABERTURA_DT'].max().date()
             
-            filters['status'] = multiselect_with_all("Status", options['status'], default_all=True, key="status_filter")
-            filters['tipo_atendimento'] = multiselect_with_all("Tipo de Atendimento", options['tipo_atendimento'], default_all=True, key="tipo_filter")
+            # ============================================
+            # FILTROS COM CHAVE DINÂMICA (reset_counter)
+            # ============================================
+            counter = st.session_state.reset_counter
+            
+            filters['status'] = multiselect_with_all("Status", options['status'], default_all=True, key=f"status_filter_{counter}")
+            filters['tipo_atendimento'] = multiselect_with_all("Tipo de Atendimento", options['tipo_atendimento'], default_all=True, key=f"tipo_filter_{counter}")
             
             if options['negocio']:
-                filters['negocio'] = multiselect_with_all("Negócio", options['negocio'], default_all=True, key="negocio_filter")
+                filters['negocio'] = multiselect_with_all("Negócio", options['negocio'], default_all=True, key=f"negocio_filter_{counter}")
             
             if options['empresa']:
-                filters['empresa'] = multiselect_with_all("Empresa (SUBESTIPULANTE)", options['empresa'], default_all=True, key="empresa_filter")
+                filters['empresa'] = multiselect_with_all("Empresa (SUBESTIPULANTE)", options['empresa'], default_all=True, key=f"empresa_filter_{counter}")
             
             if options['categoria']:
-                filters['categoria'] = multiselect_with_all("Categoria", options['categoria'], default_all=True, key="categoria_filter")
+                filters['categoria'] = multiselect_with_all("Categoria", options['categoria'], default_all=True, key=f"categoria_filter_{counter}")
             
             if options['produto']:
-                filters['produto'] = multiselect_with_all("Produto", options['produto'], default_all=True, key="produto_filter")
+                filters['produto'] = multiselect_with_all("Produto", options['produto'], default_all=True, key=f"produto_filter_{counter}")
             
             if options['responsavel']:
-                filters['responsavel'] = multiselect_with_all("Responsável", options['responsavel'], default_all=True, key="responsavel_filter")
+                filters['responsavel'] = multiselect_with_all("Responsável", options['responsavel'], default_all=True, key=f"responsavel_filter_{counter}")
             
             st.subheader("📅 Período")
             periodo_opcao = st.radio(
                 "Selecione o período:",
                 options=["TODAS AS DATAS", "PERÍODO PERSONALIZADO"],
                 index=0,
-                key="periodo_radio"
+                key=f"periodo_radio_{counter}"
             )
             
             filters['periodo_opcao'] = periodo_opcao
@@ -308,12 +317,14 @@ with st.sidebar:
             if periodo_opcao == "PERÍODO PERSONALIZADO":
                 col1, col2 = st.columns(2)
                 with col1:
-                    filters['data_inicio'] = st.date_input("Data Inicial", value=min_date, min_value=min_date, max_value=max_date)
+                    filters['data_inicio'] = st.date_input("Data Inicial", value=min_date, min_value=min_date, max_value=max_date, key=f"data_inicio_{counter}")
                 with col2:
-                    filters['data_fim'] = st.date_input("Data Final", value=max_date, min_value=min_date, max_value=max_date)
+                    filters['data_fim'] = st.date_input("Data Final", value=max_date, min_value=min_date, max_value=max_date, key=f"data_fim_{counter}")
             
             st.markdown("---")
+            # Botão Reset – incrementa o contador e recarrega
             if st.button("🔄 Resetar todos os filtros", use_container_width=True):
+                st.session_state.reset_counter += 1
                 st.rerun()
     
     st.markdown("---")
@@ -709,7 +720,6 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     if len(df_protocolos) > 0:
         st.dataframe(df_protocolos[colunas_existentes], use_container_width=True, height=400)
         
-        # Download em Excel (substitui CSV)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_protocolos[colunas_existentes].to_excel(writer, index=False, sheet_name='Protocolos')
@@ -754,7 +764,6 @@ if uploaded_file is not None and df is not None and len(df) > 0:
     
     st.dataframe(display_df, use_container_width=True, height=400)
     
-    # Download em Excel (substitui CSV)
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         filtered_df[available_cols].to_excel(writer, index=False, sheet_name='Dados')
